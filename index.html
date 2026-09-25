@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mata Mosquito - Gameplay</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #2a5298 url('https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=1920&q=80') no-repeat center center/cover;
+            cursor: crosshair; /* Cursor de mira */
+        }
+
+        /* Painel HUD (Placar, Vidas e Tempo) */
+        #hud {
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            color: #fff;
+            padding: 12px 30px;
+            border-radius: 50px;
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+            z-index: 10;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .hud-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1.1rem;
+            font-weight: bold;
+        }
+
+        .coracoes {
+            display: flex;
+            gap: 4px;
+            font-size: 1.3rem;
+        }
+
+        .coracao-cheio { color: #ff4757; }
+        .coracao-vazio { color: #57606f; opacity: 0.5; }
+
+        /* Estilização do Mosquito */
+        .mosquito {
+            position: absolute;
+            cursor: pointer;
+            z-index: 5;
+            transition: transform 0.1s ease-out;
+            filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.5));
+        }
+
+        /* Animação de eliminação */
+        .mosquito.eliminado {
+            transform: scale(0) rotate(180deg) !important;
+            opacity: 0;
+            transition: all 0.2s ease-in;
+            pointer-events: none;
+        }
+
+        /* Overlay do Menu e Game Over */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .modal-card {
+            background: #ffffff;
+            color: #333;
+            width: 90%;
+            max-width: 420px;
+            padding: 30px;
+            border-radius: 16px;
+            text-align: center;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes popIn {
+            from { transform: scale(0.8); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .modal-card h2 {
+            color: #1e3c72;
+            margin-bottom: 15px;
+            font-size: 1.8rem;
+        }
+
+        .modal-card label {
+            display: block;
+            margin: 12px 0 6px;
+            font-weight: bold;
+            text-align: left;
+            color: #555;
+        }
+
+        .modal-card select, .modal-card input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1rem;
+            margin-bottom: 15px;
+            outline: none;
+        }
+
+        .modal-card select:focus, .modal-card input:focus {
+            border-color: #1e3c72;
+        }
+
+        .btn-acao {
+            width: 100%;
+            background: #28a745;
+            color: white;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: 10px;
+        }
+
+        .btn-acao:hover {
+            background: #218838;
+        }
+
+        .btn-secundario {
+            background: #6c757d;
+        }
+
+        .btn-secundario:hover {
+            background: #5a6268;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- HUD (Painel Superior) -->
+    <div id="hud">
+        <div class="hud-item">
+            <span>❤️ Vidas:</span>
+            <div id="vidas-container" class="coracoes">
+                <span class="coracao-cheio">❤️</span>
+                <span class="coracao-cheio">❤️</span>
+                <span class="coracao-cheio">❤️</span>
+            </div>
+        </div>
+        <div class="hud-item">
+            <span>🎯 Pontos:</span>
+            <span id="placar-pontos">0</span>
+        </div>
+        <div class="hud-item">
+            <span>⏱️ Tempo:</span>
+            <span id="cronometro">0s</span>
+        </div>
+    </div>
+
+    <!-- Modal Inicial / Seleção de Dificuldade -->
+    <div id="modal-inicio" class="modal-overlay">
+        <div class="modal-card">
+            <h2>🦟 Mata Mosquito</h2>
+            <p>Selecione o nível de dificuldade para iniciar a caça:</p>
+            
+            <label for="select-dificuldade">Dificuldade:</label>
+            <select id="select-dificuldade">
+                <option value="facil">Fácil (Mosquitos lentos e grandes)</option>
+                <option value="normal" selected>Normal (Equilibrado)</option>
+                <option value="dificil">Difícil (Rápidos e menores)</option>
+                <option value="chuck_norris">Chuck Norris (Impossível! ⚡)</option>
+            </select>
+
+            <button class="btn-acao" onclick="iniciarJogo()">Começar Jogo</button>
+        </div>
+    </div>
+
+    <!-- Modal Game Over / Envio para o Ranking -->
+    <div id="modal-gameover" class="modal-overlay hidden">
+        <div class="modal-card">
+            <h2 style="color: #dc3545;">💀 Fim de Jogo!</h2>
+            <p>Você foi superado pelos mosquitos.</p>
+            
+            <div style="background: #f8f9fa; padding: 12px; border-radius: 8px; margin: 15px 0;">
+                <p><strong>Pontuação:</strong> <span id="final-pontos">0</span> pts</p>
+                <p><strong>Tempo Sobrevivido:</strong> <span id="final-tempo">0</span> seg</p>
+            </div>
+
+            <label for="nome-jogador">Digite seu Nome para o Ranking:</label>
+            <input type="text" id="nome-jogador" placeholder="Ex: Caçador Supremo" maxlength="30" required>
+
+            <button class="btn-acao" onclick="salvarPontuacao()">Salvar no Ranking</button>
+            <button class="btn-acao btn-secundario" onclick="reiniciarJogo()" style="margin-top: 8px;">Jogar Novamente</button>
+        </div>
+    </div>
+
+    <script>
+        // Configurações e Parâmetros por Dificuldade
+        const CONFIG_DIFICULDADE = {
+            facil: {
+                intervaloMosquito: 1500, // Surge a cada 1.5s
+                tempoVida: 2200,         // Fica 2.2s na tela
+                tamanhoBase: 80          // Tamanho em px
+            },
+            normal: {
+                intervaloMosquito: 1000, // Surge a cada 1.0s
+                tempoVida: 1500,         // Fica 1.5s na tela
+                tamanhoBase: 65
+            },
+            dificil: {
+                intervaloMosquito: 750,  // Surge a cada 0.75s
+                tempoVida: 1100,         // Fica 1.1s na tela
+                tamanhoBase: 50
+            },
+            chuck_norris: {
+                intervaloMosquito: 500,  // Surge a cada 0.5s
+                tempoVida: 750,          // Fica 0.75s na tela
+                tamanhoBase: 35
+            }
+        };
+
+        // Estado do Jogo
+        let estadoJogo = {
+            pontuacao: 0,
+            vidas: 3,
+            tempoSegundos: 0,
+            dificuldade: 'normal',
+            emAndamento: false,
+            loopMosquito: null,
+            loopCronometro: null,
+            mosquitoAtualTimeout: null
+        };
+
+        // Inicia a partida
+        function iniciarJogo() {
+            const selectDif = document.getElementById('select-dificuldade');
+            estadoJogo.dificuldade = selectDif.value;
+            estadoJogo.pontuacao = 0;
+            estadoJogo.vidas = 3;
+            estadoJogo.tempoSegundos = 0;
+            estadoJogo.emAndamento = true;
+
+            // Oculta modais e atualiza HUD
+            document.getElementById('modal-inicio').classList.add('hidden');
+            document.getElementById('modal-gameover').classList.add('hidden');
+            atualizarHUD();
+
+            // Inicia Cronômetro
+            estadoJogo.loopCronometro = setInterval(() => {
+                estadoJogo.tempoSegundos++;
+                document.getElementById('cronometro').textContent = `${estadoJogo.tempoSegundos}s`;
+            }, 1000);
+
+            // Inicia Loop de Spawning de Mosquitos
+            agendarProximoMosquito();
+        }
+
+        // Loop contínuo de geração de mosquitos
+        function agendarProximoMosquito() {
+            if (!estadoJogo.emAndamento) return;
+
+            const config = CONFIG_DIFICULDADE[estadoJogo.dificuldade];
+
+            estadoJogo.loopMosquito = setTimeout(() => {
+                criarMosquito();
+                agendarProximoMosquito();
+            }, config.intervaloMosquito);
+        }
+
+        // Gera o mosquito em posição aleatória na tela
+        function criarMosquito() {
+            // Remove mosquito anterior se ainda existir na tela e reduz vida
+            removerMosquitoExistente(true);
+
+            if (!estadoJogo.emAndamento) return;
+
+            const config = CONFIG_DIFICULDADE[estadoJogo.dificuldade];
+            const mosquito = document.createElement('img');
+            mosquito.id = 'mosquito-ativo';
+            mosquito.className = 'mosquito';
+
+            // Tenta carregar imagem local; usa SVG Fallback caso não encontre a imagem
+            mosquito.src = 'mosquito.png';
+            mosquito.onerror = () => {
+                // Fallback SVG inline para rodar sem dependência de imagem externa
+                mosquito.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="30" fill="%23222"/><circle cx="35" cy="35" r="8" fill="%23f00"/><circle cx="65" cy="35" r="8" fill="%23f00"/><path d="M10,20 Q30,5 40,30 M90,20 Q70,5 60,30" stroke="%23aaa" stroke-width="4" fill="none"/></svg>';
+            };
+
+            // Variação de tamanho (+/- 20% do tamanho base)
+            const variacaoTamanho = (Math.random() * 0.4) + 0.8; 
+            const tamanhoFinal = config.tamanhoBase * variacaoTamanho;
+
+            // Cálculo de Posição Aleatória (respeitando as margens da tela)
+            const larguraTela = window.innerWidth - tamanhoFinal - 20;
+            const alturaTela = window.innerHeight - tamanhoFinal - 20;
+
+            const posX = Math.max(20, Math.floor(Math.random() * larguraTela));
+            const posY = Math.max(90, Math.floor(Math.random() * alturaTela)); // >90px para não sobrepor o HUD
+
+            // Orientação / Inversão Espelhada Aleatória
+            const lado = Math.random() < 0.5 ? 1 : -1;
+
+            mosquito.style.width = `${tamanhoFinal}px`;
+            mosquito.style.height = `${tamanhoFinal}px`;
+            mosquito.style.left = `${posX}px`;
+            mosquito.style.top = `${posY}px`;
+            mosquito.style.transform = `scaleX(${lado})`;
+
+            // Evento de Clique no Mosquito
+            mosquito.onclick = () => acertarMosquito(mosquito);
+
+            document.body.appendChild(mosquito);
+
+            // Timeout de sumiço por tempo expirado (se o jogador não clicar)
+            estadoJogo.mosquitoAtualTimeout = setTimeout(() => {
+                removerMosquitoExistente(true);
+            }, config.tempoVida);
+        }
+
+        // Lógica de Acerto do Mosquito
+        function acertarMosquito(elemento) {
+            if (!estadoJogo.emAndamento || elemento.classList.contains('eliminado')) return;
+
+            // Cancela o sumiço automático por tempo
+            clearTimeout(estadoJogo.mosquitoAtualTimeout);
+
+            // Incrementa Pontuação
+            estadoJogo.pontuacao += 10;
+            document.getElementById('placar-pontos').textContent = estadoJogo.pontuacao;
+
+            // Animação visual de abate
+            elemento.classList.add('eliminado');
+            setTimeout(() => elemento.remove(), 200);
+        }
+
+        // Remove mosquito e contabiliza dano se tiver escapado
+        function removerMosquitoExistente(escapou = false) {
+            const mosquito = document.getElementById('mosquito-ativo');
+            if (mosquito) {
+                clearTimeout(estadoJogo.mosquitoAtualTimeout);
+                mosquito.remove();
+
+                if (escapou && estadoJogo.emAndamento) {
+                    estadoJogo.vidas--;
+                    atualizarHUD();
+
+                    if (estadoJogo.vidas <= 0) {
+                        finalizarJogo();
+                    }
+                }
+            }
+        }
+
+        // Atualiza os corações de vida na tela
+        function atualizarHUD() {
+            const container = document.getElementById('vidas-container');
+            container.innerHTML = '';
+
+            for (let i = 1; i <= 3; i++) {
+                const coracao = document.createElement('span');
+                coracao.className = i <= estadoJogo.vidas ? 'coracao-cheio' : 'coracao-vazio';
+                coracao.textContent = '❤️';
+                container.appendChild(coracao);
+            }
+        }
+
+        // Encerramento do jogo
+        function finalizarJogo() {
+            estadoJogo.emAndamento = false;
+            clearInterval(estadoJogo.loopCronometro);
+            clearTimeout(estadoJogo.loopMosquito);
+            clearTimeout(estadoJogo.mosquitoAtualTimeout);
+
+            removerMosquitoExistente(false);
+
+            // Exibe modal de Game Over
+            document.getElementById('final-pontos').textContent = estadoJogo.pontuacao;
+            document.getElementById('final-tempo').textContent = estadoJogo.tempoSegundos;
+            document.getElementById('modal-gameover').classList.remove('hidden');
+        }
+
+        // Envia o resultado para o Backend (`POST /api/ranking`)
+        async function salvarPontuacao() {
+            const nomeInput = document.getElementById('nome-jogador');
+            const nome = nomeInput.value.trim();
+
+            if (!nome) {
+                alert('Por favor, informe seu nome para salvar o registro.');
+                return;
+            }
+
+            const payload = {
+                nome_jogador: nome,
+                pontuacao: estadoJogo.pontuacao,
+                dificuldade: estadoJogo.dificuldade,
+                tempo_segundos: estadoJogo.tempoSegundos
+            };
+
+            try {
+                const resposta = await fetch('/api/ranking', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const resultado = await resposta.json();
+
+                if (resultado.sucesso) {
+                    // Redireciona para a página do ranking
+                    window.location.href = 'ranking.html';
+                } else {
+                    alert('Erro ao salvar: ' + resultado.mensagem);
+                }
+            } catch (erro) {
+                console.error('Erro na requisição:', erro);
+                alert('Falha na comunicação com o servidor backend.');
+            }
+        }
+
+        function reiniciarJogo() {
+            document.getElementById('modal-gameover').classList.add('hidden');
+            document.getElementById('modal-inicio').classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
